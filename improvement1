@@ -1,5 +1,8 @@
 #!/bin/bash
 BREAK="============================================================"
+ServerTime="date +'%F'"
+
+
 if [ $# == 0 ]; then
     filesystem="/"
     echo $filesystem
@@ -8,17 +11,39 @@ elif [ $# == 2 ] && [ $1 == '-f' ]; then
     echo $filesystem
 fi
 
-echo -ne "\n $BREAK \n \t Disk Usage for filesystem $(date +'%F') \n $BREAK \n\n";
-df -hP $filesystem;
 
-echo -ne "\n $BREAK \n \t Volume Group Usage $(date +'%F') \n $BREAK \n\n";
+echo "== Server Time: ==";
+$ServerTime
+
+echo -ne "\n $BREAK \n \t == Filesystem Information == \n $BREAK \n\n";
+df -PTh $filesystem;
+
+echo -ne "\n $BREAK \n \t == Inode Information == \n $BREAK \n\n";
+df -PTi $filesystem;
+
+echo -ne "\n $BREAK \n \t == Largest Directories ==  \n $BREAK \n\n";
+du -hcx --max-depth=2 ${FS} 2>/dev/null | grep -P '^([0-9]\.*)*G(?!.*(\btotal\b|\./$))' | sort -rnk1,1 | head -10 | column -t;
+
+echo -ne "\n $BREAK \n \t == Largest Files ==  \n $BREAK \n\n";
+find ${FS} -mount -ignore_readdir_race -type f -exec du {} + 2>&1 | sort -rnk1,1 | head -20 | awk 'BEGIN{ CONVFMT="%.2f";}{ $1=( $1 / 1024 )"M"; print;}' | column -t
+
+echo -ne "\n $BREAK \n \t == Largest Files Older Than 30 Days ==  \n $BREAK \n\n";
+find ${FS} -mount -ignore_readdir_race -type f -mtime +30 -exec du {} + 2>&1 | sort -rnk1,1 | head -20 | awk 'BEGIN{ CONVFMT="%.2f";}{ $1=( $1 / 1024 )"M"; print; }' | column -t
+
+
+
+
+echo -ne "\n $BREAK \n \t == Volume Group Usage == \n $BREAK \n\n";
 vgs $(df -h $filesystem | grep dev | awk '{print $1}'| cut -d\- -f1| cut -d\/ -f4);
 
-echo -ne "\n $BREAK \n \t Largest Folders:$filesystem $(date +'%F') \n $BREAK \n\n";
-du -xSk $filesystem | sort -rn | head -20|awk '{printf "%d MB\t%s\n",($1/1024),$NF}' ;
-
-echo -ne "\n $BREAK \n \t Largest Files:$filesystem \n $BREAK \n\n";
-find $filesystem -mount -type f -ls|sort -rnk7 |head -20|awk '{printf "%d MB\t%s\n",($7/1024)/1024,$NF}';
+while true; do
+    read -p "Do you wish to proceed with gathering detailed report from the largest directories and files for the $filesystem filesystem $(date +'%F')  DO NOT RUN THIS ON FILESYSTEMS LARGER THAN 200GB AND/OR NETWORK MOUNTED?" yn
+    case $yn in
+        [Yy]* ) echo -ne "\n $BREAK \n \t == Largest Directories ==  \n $BREAK \n\n" && du -xSk $filesystem | sort -rn | head -20|awk '{printf "%d MB\t%s\n",($1/1024),$NF}'; echo -ne "\n $BREAK \n \t == Largest Files ==  \n $BREAK \n\n" && find $filesystem -mount -type f -ls|sort -rnk7 |head -20|awk '{printf "%d MB\t%s\n",($7/1024)/1024,$NF}' && break;;
+        [Nn]* ) break;;
+        * ) echo "Please answer yes or no.";;
+    esac
+done
 
 echo -ne "\n $BREAK \n \t List of All Open Files \n $BREAK \n\n";
 function  check_os {
@@ -47,6 +72,7 @@ function package_installeda {
 }
 package_installeda;
 
-echo -ne "\n $BREAK \n \t Open Deleted Files:$filesystem \n $BREAK \n\n";
-lsof 2> /dev/null | grep $filesystem | grep deleted | wc -l
+echo -ne "\n $BREAK \n \t Number of Open Deleted Files on:$filesystem \n $BREAK \n\n";
+lsof 2> /dev/null | grep $filesystem | grep deleted | wc -l;
+echo -ne "\n $BREAK \n \t Open Deleted Files on :$filesystem bigger than 1GB \n $BREAK \n\n";
 lsof 2> /dev/null | grep $filesystem | grep deleted| awk '{ if($7 > 1048576) print $7/1048576, "MB ",$9,$1 }' | sort -n -u | tail;
